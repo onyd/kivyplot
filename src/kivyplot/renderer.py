@@ -24,7 +24,6 @@ THE SOFTWARE.
 """
 
 
-import numpy as np
 import os
 import kivyplot
 
@@ -33,15 +32,13 @@ from kivy.uix.widget import Widget
 from kivy.clock import Clock
 from kivy.graphics.fbo import Fbo
 from kivy.core.window import Window
-from kivy.graphics import BindTexture
 from kivy.graphics.instructions import InstructionGroup
 from kivy.graphics.opengl import glEnable, glDisable, glCullFace, GL_DEPTH_TEST, GL_CULL_FACE, GL_BACK
 from kivy.graphics.transformation import Matrix
 from kivy.graphics import (
     Callback, PushMatrix, PopMatrix,
-    Rectangle, Canvas
+    Rectangle, BindTexture
 )
-import time
 
 kivyplot_path = os.path.abspath(os.path.dirname(kivyplot.__file__))
 
@@ -56,7 +53,6 @@ class Renderer(Widget):
         self.shader_file = kw.pop("shader_file", None)
         self.picking_shader_file = kw.pop("picking_shader_file", None)
         self.picking = picking
-        self.canvas = Canvas()
         super(Renderer, self).__init__(**kw)
 
         with self.canvas:
@@ -68,11 +64,10 @@ class Renderer(Widget):
                 self.picking_fbo = Fbo(size=self.size,
                                        with_depthbuffer=True, compute_normal_mat=False,
                                        clear_color=(0., 0., 0., 1.))
-
         self._config_fbo()
         if self.picking:
             self._config_picking_fbo()
-        self.texture = self.fbo.texture
+        self._viewport.texture = self.fbo.texture
         self.camera = None
         self.scene = None
 
@@ -81,12 +76,12 @@ class Renderer(Widget):
         self.fbo.shader.source = self.shader_file or \
             os.path.join(kivyplot_path, "default.glsl")
         with self.fbo:
-            PushMatrix()
             Callback(self._setup_gl_context)
+            PushMatrix()
             # instructions set for all instructions
             self._instructions = InstructionGroup()
-            Callback(self._reset_gl_context)
             PopMatrix()
+            Callback(self._reset_gl_context)
 
     def _config_picking_fbo(self):
         # set shader file here
@@ -94,12 +89,12 @@ class Renderer(Widget):
             os.path.join(kivyplot_path, "picking_default.glsl")
 
         with self.picking_fbo:
-            PushMatrix()
             Callback(self._setup_gl_context_picking)
+            PushMatrix()
             # instructions set for all instructions
             self._instructions_picking = InstructionGroup()
-            Callback(self._reset_gl_context)
             PopMatrix()
+            Callback(self._reset_gl_context)
 
     def _setup_gl_context(self, *args):
         glEnable(GL_CULL_FACE)
@@ -123,27 +118,28 @@ class Renderer(Widget):
 
         if self.picking:
             self._instructions_picking.clear()
-            self._instructions_picking.add(self.scene.as_picking_instructions())
+            self._instructions_picking.add(
+                self.scene.as_picking_instructions())
 
     def render(self, scene, camera):
         self.scene = scene
         self.camera = camera
         self.camera.bind_to(self)
-        
+
         self._instructions.add(scene.as_instructions())
         if self.picking:
             self._instructions_picking.add(scene.as_picking_instructions())
 
         Clock.schedule_once(self._update_matrices, -1)
 
-    def on_size(self, instance, value):
-        if value[0] > 0 and value[1] > 0:
-            self.fbo.size = value
+    def on_size(self, *args):
+        if self.width > 0 and self.height > 0:
+            self.fbo.size = self.size
             if self.picking:
-                self.picking_fbo.size = value
+                self.picking_fbo.size = self.size
 
             self._viewport.texture = self.fbo.texture
-            self._viewport.size = value
+            self._viewport.size = self.size
             self._viewport.pos = self.pos
             self._update_matrices()
 
@@ -151,17 +147,12 @@ class Renderer(Widget):
         self._viewport.pos = self.pos
         self._update_matrices()
 
-    def on_texture(self, instance, value):
-        self._viewport.texture = value
-
     def _update_matrices(self, dt=None):
         if self.camera:
             self.fbo['projection_mat'] = self.camera.projection_matrix
             self.fbo['modelview_mat'] = self.camera.modelview_matrix
             self.fbo['model_mat'] = self.camera.model_matrix
             self.fbo['camera_pos'] = [float(p) for p in self.camera.position]
-            self.fbo['camera_back'] = [float(p) for p in self.camera._back]
-            self.fbo['t'] = time.time()
             self.fbo['view_mat'] = Matrix().rotate(
                 Window.rotation, 0.0, 0.0, 1.0)
 

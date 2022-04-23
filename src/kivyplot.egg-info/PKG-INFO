@@ -1,0 +1,21 @@
+Metadata-Version: 2.1
+Name: kivyplot
+Version: 0.0.7
+Summary: Library for 3D and 2D plot with kivy
+Home-page: https://github.com/onyd/kivyplot
+Author: Anthony Dard
+Author-email: anthony.dard@grenoble-inp.org
+License: UNKNOWN
+Project-URL: Bug Tracker, https://github.com/onyd/kivyplot/issues
+Platform: UNKNOWN
+Classifier: Programming Language :: Python :: 3
+Classifier: License :: OSI Approved :: MIT License
+Classifier: Operating System :: OS Independent
+Requires-Python: >=3.6
+Description-Content-Type: text/markdown
+License-File: LICENSE
+
+# General
+
+This repository contains kivyplot, a python library to make 2D and 3D plot with kivy. 
+

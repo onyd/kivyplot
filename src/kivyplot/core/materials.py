@@ -36,10 +36,19 @@ def set_attribute_to_uniform(attr_name, uniform_var):
     MATERIAL_TO_SHADER_MAP[attr_name] = uniform_var
 
 
+class Selection(ChangeState):
+    def __init__(self) -> None:
+        super().__init__()
+        self.changes['S'] = 0.0
+
+    def set_selected(self, value):
+        self.changes['S'] = float(value)
+
+
 class Material(ChangeState):
 
     def __init__(self, transparency=1.0, color=(1, 1, 1),
-                **kwargs):
+                 **kwargs):
         super(Material, self).__init__()
         transparency = float(transparency)
         color = tuple(float(c) for c in color)

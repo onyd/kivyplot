@@ -25,7 +25,7 @@ THE SOFTWARE.
 from kivy.graphics import Mesh as KivyMesh
 import numpy as np
 from ..core.object3d import Object3D
-from ..core.materials import Material
+from ..core.materials import Material, Selection
 
 DEFAULT_VERTEX_FORMAT = [
     (b'v_pos', 3, 'float'),
@@ -34,6 +34,7 @@ DEFAULT_VERTEX_FORMAT = [
 DEFAULT_MESH_MODE = 'triangles'
 id = 0
 
+
 class Mesh(Object3D):
 
     def __init__(self, geometry, material, mesh_mode=DEFAULT_MESH_MODE, position=np.array([0, 0, 0]), data={}, **kw):
@@ -41,10 +42,11 @@ class Mesh(Object3D):
         global id
         id += 1
         self.id = id
-        
+
         self.geometry = geometry
         self.material = material
         self.mtl = self.material  # shortcut for material property
+        self.sel_state = Selection()
         self.vertex_format = kw.pop('vertex_format', DEFAULT_VERTEX_FORMAT)
         self.mesh_mode = mesh_mode
         self.data = data
@@ -66,14 +68,14 @@ class Mesh(Object3D):
             for i, v_idx in enumerate(vertex_group.indicies):
                 vertex = self.geometry.vertices[v_idx]
                 vertices.extend(vertex)
-                
+
                 # Add normals if they are given
                 try:
                     normal = vertex_group.vertex_normals[i]
                 except:
                     normal = np.array([0, 0, 0])
                 vertices.extend(normal)
-                
+
                 indices.append(idx)
                 idx += 1
         if idx >= 65535 - 1:
@@ -86,10 +88,13 @@ class Mesh(Object3D):
             mode=self.mesh_mode
         )
         self._mesh = KivyMesh(**kw)
+        self._picking_mesh = KivyMesh(**kw)
 
     def custom_instructions(self, picking):
         if picking:
             yield Material(color=tuple((c / 255.0 for c in self.get_cid())), transparency=1)
+            yield self._picking_mesh
         else:
             yield self.material
-        yield self._mesh
+            yield self.sel_state
+            yield self._mesh

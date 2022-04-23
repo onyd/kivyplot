@@ -3,19 +3,23 @@ from kivy.uix.floatlayout import FloatLayout
 from kivyplot import Mesh, Material
 import math
 from kivyplot.extras.geometries import *
-from kivy.properties import NumericProperty
+from kivy.properties import NumericProperty, ObjectProperty
+from kivy.clock import Clock
+
 
 class Plot3D(FloatLayout):
     radius = NumericProperty(20)
+    picking_callback = ObjectProperty(lambda x: x)
 
-    def __init__(self, **kw):
+    def __init__(self, picking=False, **kw):
         super(Plot3D, self).__init__(**kw)
 
         #self.ray_cast = None
         self.cid_to_mesh = {}
+        self.selected = set()
 
         # Setup rendering scene
-        self.renderer = Renderer(picking=False)
+        self.renderer = Renderer(picking=picking)
 
         self.scene = Scene()
         self.camera = PerspectiveCamera(20, 1, 0.1, 500)
@@ -42,7 +46,7 @@ class Plot3D(FloatLayout):
 
     def setup_grid(self):
         grid_geo = GridGeometry(12, 2)
-        material = Material(color=(0., 0., 0.), shininess=5)
+        material = Material(color=(0., 0., 0.))
         self.grid = Mesh(grid_geo, material, mesh_mode='lines',
                          position=np.array([-1, 0, -1]))
         self.scene.add(self.grid, group="__grid__")
@@ -63,23 +67,26 @@ class Plot3D(FloatLayout):
     def add_group(self, group, color=(0.0, 0.0, 1.0), radius=0.05):
         assert(group != "__grid__")
         self.points_mat[group] = Material(
-            color=color, shininess=10)
+            color=color)
         self.points_geo[group] = SphereGeometry(radius)
 
-    def add_points(self, *points, group=None, color=(0, 0, 1), radius=0.05):
+    def add_points(self, *points, data=None, group=None, color=(0, 0, 1), radius=0.05):
         assert(group != "__grid__")
         if group is None:
             geometry = SphereGeometry(radius)
-            material = Material(color=color, shininess=10)
+            material = Material(color=color)
         else:
             geometry = self.points_geo[group]
             material = self.points_mat[group]
 
+        if isinstance(data, str) or not hasattr(data, '__iter__'):
+            data = [data] * len(points)
+
         # Build meshes
         meshes = []
-        for p in points:
+        for p, d in zip(points, data):
             m = Mesh(geometry, material, position=p,
-                     data={"pos": p, "radius": radius})
+                     data=d)
             meshes.append(m)
             self.cid_to_mesh[m.get_cid()] = m
         self.scene.add(*meshes, group=group)
@@ -128,8 +135,22 @@ class Plot3D(FloatLayout):
                     return True
             elif self.view_mode == 'pick':
                 cid = self.renderer.get_cid_at(*touch.pos)
-                if cid:
-                    print(self.cid_to_mesh[cid])
+                try:
+                    mesh = self.cid_to_mesh[cid]
+                    if mesh in self.selected:
+                        self.selected.remove(mesh)
+                        mesh.sel_state.set_selected(False)
+                    else:
+                        self.selected.add(mesh)
+                        mesh.sel_state.set_selected(True)
+                    self.picking_callback(mesh.data)
+                    self.renderer.fbo.ask_update()
+                    # Ensure that the selection is shown immediately
+                    Clock.schedule_once(
+                        lambda _: self.renderer.fbo.ask_update())
+                except KeyError:
+                    pass
+                return True
 
         return super().on_touch_up(touch)
 

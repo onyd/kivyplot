@@ -1,0 +1,4 @@
+kivy
+kivymd
+numpy
+matplotlib

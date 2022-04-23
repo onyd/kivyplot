@@ -9,4 +9,5 @@ from .core.geometry import Geometry
 from .core.VertexGroup import VertexGroup
 from .core.face3 import Face3
 from .extras.geometries import SphereGeometry, BoxGeometry, GridGeometry
-from .Plot3D import Plot3D
+from .plot.Plot3D import Plot3D
+from .plot.Plot2D import Plot2D
