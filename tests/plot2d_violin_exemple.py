@@ -10,7 +10,7 @@ class MainApp(App):
         data = [np.random.poisson(10, 50) for _ in range(N)]
 
         self.root = Plot2D()
-        self.root.violin([f"C{i}" for i in range(N)], data)
+        self.root.violin([f"Coordinate{i}" for i in range(N)], data)
         return self.root
 
 
