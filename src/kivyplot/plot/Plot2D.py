@@ -102,126 +102,161 @@ class VLineElement(LineElelement):
 
 
 class AxisElement(GraphicElement):
-    label = StringProperty('')
+    label = StringProperty(None, allownone=True)
+    label_font_size = NumericProperty(24)
+    tick_size = NumericProperty(sp(6))
+    tick_label_font_size = NumericProperty(12)
     step = NumericProperty(0.2)
+    mn = NumericProperty(-1)
+    mx = NumericProperty(1)
+    interval = ReferenceListProperty(mn, mx)
     axis_mapping = ObjectProperty(lambda x: x)
+    graph = ObjectProperty()
 
     def __init__(self, mapping_fn, **kwargs) -> None:
+        self.tick_instructions = InstructionGroup()
+
         super().__init__(mapping_fn, **kwargs)
-        self.bind(step=self._update)
+        self.bind(step=self._update,
+                  interval=self._update)
+        self.setup_axis()
+
+    def _update(self, *args):
+        self.setup_axis()
+        super()._update(*args)
+
+    def setup_axis(self):
+        raise NotImplementedError
 
 
 class XAxisElement(AxisElement):
-    xmin = NumericProperty(-1)
-    xmax = NumericProperty(1)
-    interval = ReferenceListProperty(xmin, xmax)
-
     width = NumericProperty(100)
 
     def __init__(self, mapping_fn, **kwargs) -> None:
         super().__init__(mapping_fn, **kwargs)
-        self.bind(interval=self._update,
-                  width=self._update)
+        self.bind(width=self._update)
+
+    def setup_axis(self):
+        self.tick_instructions.clear()
+        margin = 0
+        # Ticks
+        x_right_ticks = np.arange(self.step, self.mx, self.step)
+        x_left_ticks = np.arange(0, self.mn, -self.step)
+        for x in chain(x_left_ticks, x_right_ticks):
+            vx, vy = self.mapping_fn([x, self.y])
+            self.tick_instructions.add(
+                Line(points=[vx, vy+self.tick_size/2, vx, vy-self.tick_size/2], width=1))
+            tick_label = CoreLabel(
+                text=f"{self.axis_mapping(round(x, 2))}", font_size=self.tick_label_font_size)
+            tick_label.refresh()
+            texture = tick_label.texture
+
+            # Update margin
+            if margin < texture.height+2*self.tick_size:
+                margin = texture.height+2*self.tick_size
+
+            self.tick_instructions.add(Rectangle(texture=texture, pos=[
+                vx-texture.width/2, vy-texture.height-self.tick_size], size=texture.size))
+
+        # Label
+        if self.label is not None:
+            vx, vy = self.mapping_fn([self.mx / 2, self.y])
+            label = CoreLabel(
+                text=f"{self.label}", font_size=self.label_font_size)
+            label.refresh()
+            texture = label.texture
+            margin += texture.height+2*self.tick_size
+
+            self.tick_instructions.add(Rectangle(texture=texture, pos=[
+                vx-texture.width/2, vy-texture.height-2*self.tick_size], size=texture.size))
+
+        self.graph.y_margin = margin
 
 
 class YAxisElement(AxisElement):
-    ymin = NumericProperty(-1)
-    ymax = NumericProperty(1)
-    interval = ReferenceListProperty(ymin, ymax)
-
     height = NumericProperty(100)
 
     def __init__(self, mapping_fn, **kwargs) -> None:
         super().__init__(mapping_fn, **kwargs)
-        self.bind(interval=self._update,
-                  height=self._update)
+        self.bind(height=self._update)
+
+    def setup_axis(self):
+        self.tick_instructions.clear()
+        margin = 0
+        # Ticks
+        y_right_ticks = np.arange(self.step, self.mx, self.step)
+        y_left_ticks = np.arange(0, self.mn, -self.step)
+        for y in chain(y_left_ticks, y_right_ticks):
+            vx, vy = self.mapping_fn([self.x, y])
+            self.tick_instructions.add(
+                Line(points=[vx+self.tick_size/2, vy, vx-self.tick_size/2, vy], width=1))
+            tick_label = CoreLabel(
+                text=f"{self.axis_mapping(round(y, 2))}", font_size=self.tick_label_font_size)
+            tick_label.refresh()
+            texture = tick_label.texture
+
+            # Update margin
+            if margin < texture.width+2*self.tick_size:
+                margin = texture.width+2*self.tick_size
+
+            self.tick_instructions.add(Rectangle(texture=texture, pos=[
+                vx-texture.width-self.tick_size, vy-texture.height/2], size=texture.size))
+
+        # Label
+        if self.label is not None:
+            vx, vy = self.mapping_fn([self.x, self.mx / 2])
+            label = CoreLabel(
+                text=f"{self.label}", font_size=self.label_font_size)
+            label.refresh()
+            texture = label.texture
+            margin += texture.height+2*self.tick_size
+
+            self.tick_instructions.add(PushMatrix())
+            self.tick_instructions.add(
+                Rotate(origin=[vx-texture.height/2-2*self.tick_size, vy], angle=90))
+            self.tick_instructions.add(
+                Rectangle(texture=texture, pos=[
+                    vx-texture.height-2*self.tick_size, vy-texture.height/2], size=texture.size))
+            self.tick_instructions.add(PopMatrix())
+
+        self.graph.x_margin = margin
 
 
 class XArrowAxisElement(XAxisElement):
     y = NumericProperty()
-    arrow_size = NumericProperty(sp(6))
 
     def build_instructions(self, instruction_group):
         # line
         x_axis_points = self.mapping_fn([
-            (self.xmin, self.y), (self.xmax, self.y)])
+            (self.mn, self.y), (self.mx, self.y)])
         self.x_axis_line = Line(
             points=[*x_axis_points[0], *x_axis_points[1]], width=1)
         instruction_group.add(self.x_axis_line)
 
         # arrow
-        arrow_x, arrow_y = self.mapping_fn([self.xmax, self.y])
+        arrow_x, arrow_y = self.mapping_fn([self.mx, self.y])
         instruction_group.add(
-            Line(points=[arrow_x-self.arrow_size, arrow_y+self.arrow_size, arrow_x, arrow_y, arrow_x-self.arrow_size, arrow_y-self.arrow_size], width=1))
+            Line(points=[arrow_x-self.tick_size, arrow_y+self.tick_size, arrow_x, arrow_y, arrow_x-self.tick_size, arrow_y-self.tick_size], width=1))
 
-        # ticks
-        x_right_ticks = np.arange(self.step, self.xmax, self.step)
-        x_left_ticks = np.arange(0, self.xmin, -self.step)
-        for x in chain(x_left_ticks, x_right_ticks):
-            vx, vy = self.mapping_fn([x, self.y])
-            instruction_group.add(
-                Line(points=[vx, vy+self.arrow_size/2, vx, vy-self.arrow_size/2], width=1))
-            tick_label = CoreLabel(
-                text=f"{self.axis_mapping(round(x, 2))}", font_size=10)
-            tick_label.refresh()
-            texture = tick_label.texture
-            instruction_group.add(Rectangle(texture=texture, pos=[
-                vx-texture.width/2, vy-texture.height-self.arrow_size], size=texture.size))
-
-        # Label
-        vx, vy = self.mapping_fn([self.xmax / 2, self.y])
-        label = CoreLabel(
-            text=f"{self.label}", font_size=22)
-        label.refresh()
-        texture = label.texture
-        instruction_group.add(Rectangle(texture=texture, pos=[
-            vx-texture.width/2, vy-texture.height-2*self.arrow_size], size=texture.size))
+        instruction_group.add(self.tick_instructions)
 
 
 class YArrowAxisElement(YAxisElement):
     x = NumericProperty()
-    arrow_size = NumericProperty(sp(6))
 
     def build_instructions(self, instruction_group):
         # line
         y_axis_points = self.mapping_fn([
-            (self.x, self.ymin), (self.x, self.ymax)])
+            (self.x, self.mn), (self.x, self.mx)])
         instruction_group.add(
             Line(points=[*y_axis_points[0], *y_axis_points[1]], width=1))
 
         # arrow
-        arrow_x, arrow_y = self.mapping_fn([self.x, self.ymax])
+        arrow_x, arrow_y = self.mapping_fn([self.x, self.mx])
         instruction_group.add(
-            Line(points=[arrow_x+self.arrow_size, arrow_y-self.arrow_size, arrow_x, arrow_y, arrow_x-self.arrow_size, arrow_y-self.arrow_size], width=1))
+            Line(points=[arrow_x+self.tick_size, arrow_y-self.tick_size, arrow_x, arrow_y, arrow_x-self.tick_size, arrow_y-self.tick_size], width=1))
 
-        # ticks
-        y_right_ticks = np.arange(self.step, self.ymax, self.step)
-        y_left_ticks = np.arange(0, self.ymin, -self.step)
-        for y in chain(y_left_ticks, y_right_ticks):
-            vx, vy = self.mapping_fn([self.x, y])
-            instruction_group.add(
-                Line(points=[vx+self.arrow_size/2, vy, vx-self.arrow_size/2, vy], width=1))
-            tick_label = CoreLabel(
-                text=f"{self.axis_mapping(round(y, 2))}", font_size=10)
-            tick_label.refresh()
-            texture = tick_label.texture
-            instruction_group.add(Rectangle(texture=texture, pos=[
-                vx-texture.width-self.arrow_size, vy-texture.height/2], size=texture.size))
-
-        # Label
-        vx, vy = self.mapping_fn([self.x, self.ymax / 2])
-        label = CoreLabel(
-            text=f"{self.label}", font_size=22)
-        label.refresh()
-        texture = label.texture
-
-        instruction_group.add(PushMatrix())
-        instruction_group.add(
-            Rotate(origin=[vx-texture.height/2-2*self.arrow_size, vy], angle=90))
-        instruction_group.add(
-            Rectangle(texture=texture, pos=[
-                vx-texture.height-2*self.arrow_size, vy-texture.height/2], size=texture.size))
-        instruction_group.add(PopMatrix())
+        instruction_group.add(self.tick_instructions)
 
 
 class Plot2DElement(GraphicElement):
@@ -392,7 +427,9 @@ class Bar(Plot2DElement):
 
 class Graph2D(Widget):
     """Graph widget which draws axis and given data"""
-    margin = NumericProperty(sp(38))
+    x_margin = NumericProperty(sp(38))
+    y_margin = NumericProperty(sp(38))
+    margin = ReferenceListProperty(x_margin, y_margin)
 
     stepx = NumericProperty(0.2)
     stepy = NumericProperty(0.2)
@@ -440,10 +477,10 @@ class Graph2D(Widget):
         pmin = np.array([self.xmin, self.ymin])
         pmax = np.array([self.xmax, self.ymax])
         size = np.array([self.width, self.height])
-
+        m = np.array([self.x_margin, self.y_margin])
         if len(points.shape) in (1, 2):
             return (points-pmin) / (pmax-pmin) * \
-                (size - 2*self.margin) + self.margin
+                (size - 2*m) + m
         else:
             raise ValueError(
                 "To convert points into viewport space, points must be of the form [x, y] or [[x, y], ...]")
@@ -470,14 +507,14 @@ class Graph2D(Widget):
     def on_bounding_box(self, *args):
         # Update x axis
         if self.show_x_axis:
-            self.x_axis.xmin = self.xmin
-            self.x_axis.xmax = self.xmax
+            self.x_axis.mn = self.xmin
+            self.x_axis.mx = self.xmax
             self.x_axis.y = self.ymin
 
         # Update y axis
         if self.show_y_axis:
-            self.y_axis.ymin = self.ymin
-            self.y_axis.ymax = self.ymax
+            self.y_axis.mn = self.ymin
+            self.y_axis.mx = self.ymax
             self.y_axis.x = self.xmin
 
         # Update horizontal lines
@@ -535,21 +572,23 @@ class Graph2D(Widget):
         if self.show_x_axis:
             if self.x_axis_style == 'arrow':
                 self.x_axis = XArrowAxisElement(
-                    self.to_viewport_space, y=self.ymin, xmin=self.xmin, xmax=self.xmax, step=self.stepx, color=(0, 0, 0))
+                    self.to_viewport_space, graph=self, y=self.ymin, mn=self.xmin, mx=self.xmax, step=self.stepx, color=(0, 0, 0))
 
             self.x_axes_instructions.add(self.x_axis.get_instructions())
         else:
             self.x_axes_instructions.clear()
+            self.x_margin = 0
 
     def on_y_axis_style(self, *args):
         if self.show_y_axis:
             if self.y_axis_style == 'arrow':
                 self.y_axis = YArrowAxisElement(
-                    self.to_viewport_space, x=self.xmin, ymin=self.ymin, ymax=self.ymax, step=self.stepy, color=(0, 0, 0))
+                    self.to_viewport_space, graph=self, x=self.xmin, mn=self.ymin, mx=self.ymax, step=self.stepy, color=(0, 0, 0))
 
             self.y_axes_instructions.add(self.y_axis.get_instructions())
         else:
             self.y_axes_instructions.clear()
+            self.y_margin = 0
 
     def on_show_v_lines(self, *args):
         if self.show_v_lines:
@@ -870,7 +909,7 @@ class Plot2D(BoxLayout):
         self.graph.ymax = len(data)+1
         self.graph.stepx = 10**(int(np.log10(mx))-1)*len(data)
         self.graph.stepy = 1
-
+        self.graph.y_axis_mapping = lambda y: names[int(y)-1]
         self.update_legend()
         self.graph.update_data()
 
@@ -949,7 +988,7 @@ class Plot2D(BoxLayout):
         self.update_legend()
         self.graph.update_data()
 
-    def hist(self, labels, colors=None):
+    def hist(self, labels):
         h = defaultdict(int)
         for label in labels:
             h[label] += 1
@@ -957,9 +996,8 @@ class Plot2D(BoxLayout):
         X = list(h.keys())
         labels_to_index = {l: i for i, l in enumerate(X, start=1)}
 
-        if colors is None:
-            HSV = {l: (i/len(h), 0.5, 0.9) for i, l in enumerate(h)}
-            colors = {k: (*colorsys.hsv_to_rgb(*v), 1) for k, v in HSV.items()}
+        HSV = {l: (i/len(h), 0.5, 0.9) for i, l in enumerate(h)}
+        colors = {k: (*colorsys.hsv_to_rgb(*v), 1) for k, v in HSV.items()}
 
         self.graph.xmin = 0
         self.graph.xmax = len(h)+1
