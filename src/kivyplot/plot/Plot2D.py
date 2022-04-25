@@ -1,7 +1,7 @@
 
 from kivy.core.text import Label as CoreLabel
 from kivy.uix.boxlayout import BoxLayout
-from kivy.graphics import Ellipse, Line, Rectangle, Color, InstructionGroup, Callback, Mesh, Canvas
+from kivy.graphics import Ellipse, Line, Rectangle, Color, InstructionGroup, Callback, Mesh, Canvas, PushMatrix,  PopMatrix, Rotate
 from kivy.graphics.tesselator import Tesselator
 from kivy.properties import NumericProperty, ListProperty, ObjectProperty, BooleanProperty, StringProperty, ColorProperty, ReferenceListProperty, OptionProperty
 from kivy.uix.widget import Widget
@@ -102,6 +102,7 @@ class VLineElement(LineElelement):
 
 
 class AxisElement(GraphicElement):
+    label = StringProperty('')
     step = NumericProperty(0.2)
     axis_mapping = ObjectProperty(lambda x: x)
 
@@ -167,6 +168,15 @@ class XArrowAxisElement(XAxisElement):
             instruction_group.add(Rectangle(texture=texture, pos=[
                 vx-texture.width/2, vy-texture.height-self.arrow_size], size=texture.size))
 
+        # Label
+        vx, vy = self.mapping_fn([self.xmax / 2, self.y])
+        label = CoreLabel(
+            text=f"{self.label}", font_size=22)
+        label.refresh()
+        texture = label.texture
+        instruction_group.add(Rectangle(texture=texture, pos=[
+            vx-texture.width/2, vy-texture.height-2*self.arrow_size], size=texture.size))
+
 
 class YArrowAxisElement(YAxisElement):
     x = NumericProperty()
@@ -197,6 +207,21 @@ class YArrowAxisElement(YAxisElement):
             texture = tick_label.texture
             instruction_group.add(Rectangle(texture=texture, pos=[
                 vx-texture.width-self.arrow_size, vy-texture.height/2], size=texture.size))
+
+        # Label
+        vx, vy = self.mapping_fn([self.x, self.ymax / 2])
+        label = CoreLabel(
+            text=f"{self.label}", font_size=22)
+        label.refresh()
+        texture = label.texture
+
+        instruction_group.add(PushMatrix())
+        instruction_group.add(
+            Rotate(origin=[vx-texture.height/2-2*self.arrow_size, vy], angle=90))
+        instruction_group.add(
+            Rectangle(texture=texture, pos=[
+                vx-texture.height-2*self.arrow_size, vy-texture.height/2], size=texture.size))
+        instruction_group.add(PopMatrix())
 
 
 class Plot2DElement(GraphicElement):
@@ -387,6 +412,10 @@ class Graph2D(Widget):
     y_axis_mapping = ObjectProperty(lambda x: x)
     axis_mapping = ReferenceListProperty(x_axis_mapping, y_axis_mapping)
 
+    x_axis_label = StringProperty()
+    y_axis_label = StringProperty()
+    axis_label = ReferenceListProperty(x_axis_label, y_axis_label)
+
     show_x_axis = BooleanProperty(True)
     show_y_axis = BooleanProperty(True)
     show_axis = ReferenceListProperty(show_x_axis, show_y_axis)
@@ -481,6 +510,14 @@ class Graph2D(Widget):
             self.x_axis.axis_mapping = self.x_axis_mapping
         if self.y_axis:
             self.y_axis.axis_mapping = self.y_axis_mapping
+
+    def on_x_axis_label(self, *args):
+        if self.show_x_axis:
+            self.x_axis.label = self.x_axis_label
+
+    def on_y_axis_label(self, *args):
+        if self.show_y_axis:
+            self.y_axis.label = self.y_axis_label
 
     def on_show_x_axis(self, *args):
         if self.show_x_axis:
