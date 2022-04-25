@@ -949,7 +949,7 @@ class Plot2D(BoxLayout):
         self.update_legend()
         self.graph.update_data()
 
-    def hist(self, labels):
+    def hist(self, labels, colors=None):
         h = defaultdict(int)
         for label in labels:
             h[label] += 1
@@ -957,8 +957,9 @@ class Plot2D(BoxLayout):
         X = list(h.keys())
         labels_to_index = {l: i for i, l in enumerate(X, start=1)}
 
-        HSV = {l: (i/len(h), 0.5, 0.9) for i, l in enumerate(h)}
-        colors = {k: (*colorsys.hsv_to_rgb(*v), 1) for k, v in HSV.items()}
+        if colors is None:
+            HSV = {l: (i/len(h), 0.5, 0.9) for i, l in enumerate(h)}
+            colors = {k: (*colorsys.hsv_to_rgb(*v), 1) for k, v in HSV.items()}
 
         self.graph.xmin = 0
         self.graph.xmax = len(h)+1
