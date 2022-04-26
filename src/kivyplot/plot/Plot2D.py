@@ -106,11 +106,17 @@ class AxisElement(GraphicElement):
     label_font_size = NumericProperty(24)
     tick_size = NumericProperty(sp(6))
     tick_label_font_size = NumericProperty(12)
+
     step = NumericProperty(0.2)
+
     mn = NumericProperty(-1)
     mx = NumericProperty(1)
     interval = ReferenceListProperty(mn, mx)
+
     axis_mapping = ObjectProperty(lambda x: x)
+
+    show_opposite_line = BooleanProperty(False)
+
     graph = ObjectProperty()
 
     def __init__(self, mapping_fn, **kwargs) -> None:
@@ -118,23 +124,29 @@ class AxisElement(GraphicElement):
 
         super().__init__(mapping_fn, **kwargs)
         self.bind(step=self._update,
-                  interval=self._update)
+                  interval=self._update,
+                  show_opposite_line=self._update)
         self.setup_axis()
 
     def _update(self, *args):
         self.setup_axis()
         super()._update(*args)
-
+        
     def setup_axis(self):
         raise NotImplementedError
 
 
 class XAxisElement(AxisElement):
+    ymin = NumericProperty()
+    ymax = NumericProperty()
+
     width = NumericProperty(100)
 
     def __init__(self, mapping_fn, **kwargs) -> None:
         super().__init__(mapping_fn, **kwargs)
-        self.bind(width=self._update)
+        self.bind(width=self._update,
+                  ymin=self._update,
+                  ymax=self._update)
 
     def setup_axis(self):
         self.tick_instructions.clear()
@@ -143,7 +155,7 @@ class XAxisElement(AxisElement):
         x_right_ticks = np.arange(self.step, self.mx, self.step)
         x_left_ticks = np.arange(0, self.mn, -self.step)
         for x in chain(x_left_ticks, x_right_ticks):
-            vx, vy = self.mapping_fn([x, self.y])
+            vx, vy = self.mapping_fn([x, self.ymin])
             self.tick_instructions.add(
                 Line(points=[vx, vy+self.tick_size/2, vx, vy-self.tick_size/2], width=1))
             tick_label = CoreLabel(
@@ -160,7 +172,7 @@ class XAxisElement(AxisElement):
 
         # Label
         if self.label is not None:
-            vx, vy = self.mapping_fn([self.mx / 2, self.y])
+            vx, vy = self.mapping_fn([self.mx / 2, self.ymin])
             label = CoreLabel(
                 text=f"{self.label}", font_size=self.label_font_size)
             label.refresh()
@@ -174,11 +186,16 @@ class XAxisElement(AxisElement):
 
 
 class YAxisElement(AxisElement):
+    xmin = NumericProperty()
+    xmax = NumericProperty()
+
     height = NumericProperty(100)
 
     def __init__(self, mapping_fn, **kwargs) -> None:
         super().__init__(mapping_fn, **kwargs)
-        self.bind(height=self._update)
+        self.bind(height=self._update,
+                  xmin=self._update,
+                  xmax=self._update)
 
     def setup_axis(self):
         self.tick_instructions.clear()
@@ -187,7 +204,7 @@ class YAxisElement(AxisElement):
         y_right_ticks = np.arange(self.step, self.mx, self.step)
         y_left_ticks = np.arange(0, self.mn, -self.step)
         for y in chain(y_left_ticks, y_right_ticks):
-            vx, vy = self.mapping_fn([self.x, y])
+            vx, vy = self.mapping_fn([self.xmin, y])
             self.tick_instructions.add(
                 Line(points=[vx+self.tick_size/2, vy, vx-self.tick_size/2, vy], width=1))
             tick_label = CoreLabel(
@@ -204,7 +221,7 @@ class YAxisElement(AxisElement):
 
         # Label
         if self.label is not None:
-            vx, vy = self.mapping_fn([self.x, self.mx / 2])
+            vx, vy = self.mapping_fn([self.xmin, self.mx / 2])
             label = CoreLabel(
                 text=f"{self.label}", font_size=self.label_font_size)
             label.refresh()
@@ -223,18 +240,16 @@ class YAxisElement(AxisElement):
 
 
 class XArrowAxisElement(XAxisElement):
-    y = NumericProperty()
-
     def build_instructions(self, instruction_group):
         # line
         x_axis_points = self.mapping_fn([
-            (self.mn, self.y), (self.mx, self.y)])
+            (self.mn, self.ymin), (self.mx, self.ymin)])
         self.x_axis_line = Line(
             points=[*x_axis_points[0], *x_axis_points[1]], width=1)
         instruction_group.add(self.x_axis_line)
 
         # arrow
-        arrow_x, arrow_y = self.mapping_fn([self.mx, self.y])
+        arrow_x, arrow_y = self.mapping_fn([self.mx, self.ymin])
         instruction_group.add(
             Line(points=[arrow_x-self.tick_size, arrow_y+self.tick_size, arrow_x, arrow_y, arrow_x-self.tick_size, arrow_y-self.tick_size], width=1))
 
@@ -242,20 +257,54 @@ class XArrowAxisElement(XAxisElement):
 
 
 class YArrowAxisElement(YAxisElement):
-    x = NumericProperty()
-
     def build_instructions(self, instruction_group):
         # line
         y_axis_points = self.mapping_fn([
-            (self.x, self.mn), (self.x, self.mx)])
+            (self.xmin, self.mn), (self.xmin, self.mx)])
         instruction_group.add(
             Line(points=[*y_axis_points[0], *y_axis_points[1]], width=1))
 
         # arrow
-        arrow_x, arrow_y = self.mapping_fn([self.x, self.mx])
+        arrow_x, arrow_y = self.mapping_fn([self.xmin, self.mx])
         instruction_group.add(
             Line(points=[arrow_x+self.tick_size, arrow_y-self.tick_size, arrow_x, arrow_y, arrow_x-self.tick_size, arrow_y-self.tick_size], width=1))
 
+        instruction_group.add(self.tick_instructions)
+
+
+class XBoxAxisElement(XAxisElement):
+    def build_instructions(self, instruction_group):
+        # line
+        x_axis_points = self.mapping_fn([
+            (self.mn, self.ymin), (self.mx, self.ymin)])
+        self.x_axis_line = Line(
+            points=[*x_axis_points[0], *x_axis_points[1]], width=1)
+        instruction_group.add(self.x_axis_line)
+
+        if self.show_opposite_line:
+            x_axis_points = self.mapping_fn([
+                (self.mn, self.ymax), (self.mx, self.ymax)])
+            self.x_axis_line = Line(
+                points=[*x_axis_points[0], *x_axis_points[1]], width=1)
+            instruction_group.add(self.x_axis_line)
+            
+        instruction_group.add(self.tick_instructions)
+
+
+class YBoxAxisElement(YAxisElement):
+    def build_instructions(self, instruction_group):
+        # line
+        y_axis_points = self.mapping_fn([
+            (self.xmin, self.mn), (self.xmin, self.mx)])
+        instruction_group.add(
+            Line(points=[*y_axis_points[0], *y_axis_points[1]], width=1))
+
+        if self.show_opposite_line:
+            y_axis_points = self.mapping_fn([
+                (self.xmax, self.mn), (self.xmax, self.mx)])
+            instruction_group.add(
+                Line(points=[*y_axis_points[0], *y_axis_points[1]], width=1))
+            
         instruction_group.add(self.tick_instructions)
 
 
@@ -441,8 +490,8 @@ class Graph2D(Widget):
     ymax = NumericProperty(1)
     bounding_box = ReferenceListProperty(xmin, ymin, xmax, ymax)
 
-    x_axis_style = OptionProperty('arrow', options=['arrow'])
-    y_axis_style = OptionProperty('arrow', options=['arrow'])
+    x_axis_style = OptionProperty('arrow', options=['arrow', 'box'])
+    y_axis_style = OptionProperty('arrow', options=['arrow', 'box'])
     axis_style = ReferenceListProperty(x_axis_style, y_axis_style)
 
     x_axis_mapping = ObjectProperty(lambda x: x)
@@ -468,6 +517,8 @@ class Graph2D(Widget):
         self.picking = picking
         if self.picking:
             self.cid_to_element = {}
+        self.x_axis = None
+        self.y_axis = None
         self.setup()
 
         super().__init__(**kwargs)
@@ -509,13 +560,15 @@ class Graph2D(Widget):
         if self.show_x_axis:
             self.x_axis.mn = self.xmin
             self.x_axis.mx = self.xmax
-            self.x_axis.y = self.ymin
+            self.x_axis.ymin = self.ymin
+            self.x_axis.ymax = self.ymax
 
         # Update y axis
         if self.show_y_axis:
             self.y_axis.mn = self.ymin
             self.y_axis.mx = self.ymax
-            self.y_axis.x = self.xmin
+            self.y_axis.xmin = self.xmin
+            self.y_axis.xmax = self.xmax
 
         # Update horizontal lines
         if self.show_h_lines:
@@ -569,26 +622,63 @@ class Graph2D(Widget):
             self.y_axes_instructions.clear()
 
     def on_x_axis_style(self, *args):
+        self.x_axes_instructions.clear()
+        
         if self.show_x_axis:
             if self.x_axis_style == 'arrow':
                 self.x_axis = XArrowAxisElement(
-                    self.to_viewport_space, graph=self, y=self.ymin, mn=self.xmin, mx=self.xmax, step=self.stepx, color=(0, 0, 0))
-
+                    self.to_viewport_space,
+                    graph=self,
+                    ymin=self.ymin,
+                    mn=self.xmin,
+                    mx=self.xmax,
+                    step=self.stepx,
+                    color=(0, 0, 0))
+            elif self.x_axis_style == 'box':
+                self.x_axis = XBoxAxisElement(
+                    self.to_viewport_space,
+                    graph=self,
+                    ymin=self.ymin,
+                    ymax=self.ymax,
+                    mn=self.xmin, mx=self.xmax,
+                    step=self.stepx,
+                    color=(0, 0, 0))
+                if self.y_axis is not None:
+                    self.y_axis.show_opposite_line = self.y_axis_style == 'box'
+                self.x_axis.show_opposite_line = self.y_axis_style == 'box'
+                
             self.x_axes_instructions.add(self.x_axis.get_instructions())
         else:
-            self.x_axes_instructions.clear()
-            self.x_margin = 0
+            self.y_margin = 0
 
     def on_y_axis_style(self, *args):
+        self.y_axes_instructions.clear()
+        
         if self.show_y_axis:
             if self.y_axis_style == 'arrow':
                 self.y_axis = YArrowAxisElement(
-                    self.to_viewport_space, graph=self, x=self.xmin, mn=self.ymin, mx=self.ymax, step=self.stepy, color=(0, 0, 0))
+                    self.to_viewport_space, 
+                    graph=self, 
+                    xmin=self.xmin, 
+                    mn=self.ymin, mx=self.ymax, 
+                    step=self.stepy, 
+                    color=(0, 0, 0))
+            elif self.y_axis_style == 'box':
+                self.y_axis = YBoxAxisElement(
+                    self.to_viewport_space,
+                    graph=self,
+                    xmin=self.xmin,
+                    xmax=self.xmax,
+                    mn=self.ymin, mx=self.ymax,
+                    step=self.stepy,
+                    color=(0, 0, 0))
+                if self.x_axis is not None:
+                    self.x_axis.show_opposite_line = self.x_axis_style == 'box'
+                self.y_axis.show_opposite_line = self.x_axis_style == 'box'
 
             self.y_axes_instructions.add(self.y_axis.get_instructions())
         else:
-            self.y_axes_instructions.clear()
-            self.y_margin = 0
+            self.x_margin = 0
 
     def on_show_v_lines(self, *args):
         if self.show_v_lines:
@@ -620,7 +710,7 @@ class Graph2D(Widget):
         except KeyError:
             return None
 
-    def setup(self):
+    def setup(self):        
         with self.canvas:
             self._viewport = Rectangle(size=self.size, pos=self.pos)
             Color(rgb=(0, 0, 0))

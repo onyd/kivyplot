@@ -9,7 +9,7 @@ class MainApp(App):
         N = 5
         data = [np.random.poisson(10, 50) for _ in range(N)]
 
-        self.root = Plot2D()
+        self.root = Plot2D(axis_style=('box', 'box'))
         self.root.violin([f"Coordinate{i}" for i in range(N)], data)
         return self.root
 
