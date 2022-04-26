@@ -131,7 +131,7 @@ class AxisElement(GraphicElement):
     def _update(self, *args):
         self.setup_axis()
         super()._update(*args)
-        
+
     def setup_axis(self):
         raise NotImplementedError
 
@@ -287,7 +287,7 @@ class XBoxAxisElement(XAxisElement):
             self.x_axis_line = Line(
                 points=[*x_axis_points[0], *x_axis_points[1]], width=1)
             instruction_group.add(self.x_axis_line)
-            
+
         instruction_group.add(self.tick_instructions)
 
 
@@ -304,7 +304,7 @@ class YBoxAxisElement(YAxisElement):
                 (self.xmax, self.mn), (self.xmax, self.mx)])
             instruction_group.add(
                 Line(points=[*y_axis_points[0], *y_axis_points[1]], width=1))
-            
+
         instruction_group.add(self.tick_instructions)
 
 
@@ -623,7 +623,7 @@ class Graph2D(Widget):
 
     def on_x_axis_style(self, *args):
         self.x_axes_instructions.clear()
-        
+
         if self.show_x_axis:
             if self.x_axis_style == 'arrow':
                 self.x_axis = XArrowAxisElement(
@@ -646,22 +646,22 @@ class Graph2D(Widget):
                 if self.y_axis is not None:
                     self.y_axis.show_opposite_line = self.y_axis_style == 'box'
                 self.x_axis.show_opposite_line = self.y_axis_style == 'box'
-                
+
             self.x_axes_instructions.add(self.x_axis.get_instructions())
         else:
             self.y_margin = 0
 
     def on_y_axis_style(self, *args):
         self.y_axes_instructions.clear()
-        
+
         if self.show_y_axis:
             if self.y_axis_style == 'arrow':
                 self.y_axis = YArrowAxisElement(
-                    self.to_viewport_space, 
-                    graph=self, 
-                    xmin=self.xmin, 
-                    mn=self.ymin, mx=self.ymax, 
-                    step=self.stepy, 
+                    self.to_viewport_space,
+                    graph=self,
+                    xmin=self.xmin,
+                    mn=self.ymin, mx=self.ymax,
+                    step=self.stepy,
                     color=(0, 0, 0))
             elif self.y_axis_style == 'box':
                 self.y_axis = YBoxAxisElement(
@@ -710,7 +710,7 @@ class Graph2D(Widget):
         except KeyError:
             return None
 
-    def setup(self):        
+    def setup(self):
         with self.canvas:
             self._viewport = Rectangle(size=self.size, pos=self.pos)
             Color(rgb=(0, 0, 0))
