@@ -1,6 +1,6 @@
 
 from kivy.core.text import Label as CoreLabel
-from kivy.uix.boxlayout import BoxLayout
+from kivy.uix.gridlayout import GridLayout
 from kivy.graphics import Ellipse, Line, Rectangle, Color, InstructionGroup, Callback, Mesh, Canvas, PushMatrix,  PopMatrix, Rotate
 from kivy.graphics.tesselator import Tesselator
 from kivy.properties import NumericProperty, ListProperty, ObjectProperty, BooleanProperty, StringProperty, ColorProperty, ReferenceListProperty, OptionProperty
@@ -512,9 +512,9 @@ class Graph2D(Widget):
 
     elements = ListProperty([])
 
-    def __init__(self, picking=True, **kwargs) -> None:
+    def __init__(self, show_hover_data=True, **kwargs) -> None:
         self.canvas = Canvas()
-        self.picking = picking
+        self.picking = show_hover_data
         if self.picking:
             self.cid_to_element = {}
         self.x_axis = None
@@ -522,6 +522,52 @@ class Graph2D(Widget):
         self.setup()
 
         super().__init__(**kwargs)
+
+        # Setup tooltip
+        if show_hover_data:
+            self._tooltip = None
+            self.hovered = None
+            Window.bind(mouse_pos=self.on_mouse_pos)
+
+            self.closed = True
+
+    def _update_tooltip(self, x, y, row=1, col=1):
+        e = self.get_element_at(x, y)
+        if e is None:
+            if not self.closed:
+                self.close_tooltip()
+            return False
+        if e is self.hovered:
+            self._tooltip.pos = (x, y)
+            return False
+
+        # The element has changed
+        if not self.closed:
+            self.close_tooltip()
+        self.hovered = e
+        self._tooltip = Tooltip(text=e.tooltip_text)
+        return True
+
+    def on_mouse_pos(self, *args):
+        if not self.get_root_window():
+            return
+        pos = args[1]
+        if not self._update_tooltip(*pos):
+            return
+
+        # close if it's opened
+        if self.collide_point(*self.to_parent(*self.to_widget(*pos))):
+            if self.closed:
+                self.display_tooltip()
+
+    def close_tooltip(self, *args):
+        Window.remove_widget(self._tooltip)
+        self.hovered = None
+        self.closed = True
+
+    def display_tooltip(self, *args):
+        Window.add_widget(self._tooltip)
+        self.closed = False
 
     @numpyfy
     def to_viewport_space(self, points):
@@ -712,6 +758,7 @@ class Graph2D(Widget):
 
     def setup(self):
         with self.canvas:
+            Color(rgb=(1, 1, 1))
             self._viewport = Rectangle(size=self.size, pos=self.pos)
             Color(rgb=(0, 0, 0))
             self.box = Line(
@@ -837,65 +884,27 @@ class Graph2D(Widget):
                 self.picking_fbo.size = self.size
 
 
-class Plot2D(BoxLayout):
+class Plot2D(GridLayout):
     do_show_legend = BooleanProperty(False)
 
-    def __init__(self, show_hover_data=True, **kwargs):
-        super().__init__()
+    def __init__(self, rows=1, cols=1, **kwargs):
+        super().__init__(rows=rows,  cols=cols, **kwargs)
         # Setup widget
         self.spacing = sp(12)
-        self.bind(minimum_size=self.setter('size'))
-        self.graph = Graph2D(**kwargs)
         self.legend = None
         self.labels = []
-        self.add_widget(self.graph)
-        self.bind(pos=self.update, size=self.update)
+        self.setup_graphs()
+        self.bind(pos=self.update, size=self.update,
+                  rows=self.setup_graphs, cols=self.setup_graphs)
 
-        # Setup tooltip
-        if show_hover_data:
-            self._tooltip = None
-            self.hovered = None
-            Window.bind(mouse_pos=self.on_mouse_pos)
+    def setup_graphs(self, *args):
+        self.clear_widgets()
+        for _ in range(self.cols):
+            for _ in range(self.rows):
+                self.add_widget(Graph2D())
 
-            self.closed = True
-
-    def _update_tooltip(self, x, y):
-        e = self.graph.get_element_at(x, y)
-        if e is None:
-            if not self.closed:
-                self.close_tooltip()
-            return False
-        if e is self.hovered:
-            self._tooltip.pos = (x, y)
-            return False
-
-        # The element has changed
-        if not self.closed:
-            self.close_tooltip()
-        self.hovered = e
-        self._tooltip = Tooltip(text=e.tooltip_text)
-        return True
-
-    def on_mouse_pos(self, *args):
-        if not self.get_root_window():
-            return
-        pos = args[1]
-        if not self._update_tooltip(*pos):
-            return
-
-        # close if it's opened
-        if self.collide_point(*self.to_parent(*self.to_widget(*pos))):
-            if self.closed:
-                self.display_tooltip()
-
-    def close_tooltip(self, *args):
-        Window.remove_widget(self._tooltip)
-        self.hovered = None
-        self.closed = True
-
-    def display_tooltip(self, *args):
-        Window.add_widget(self._tooltip)
-        self.closed = False
+    def get_graph(self, i, j):
+        return self.children[len(self.children)-(i*self.cols+j+1)]
 
     def on_do_show_legend(self, *args):
         if self.legend is None:
@@ -916,35 +925,44 @@ class Plot2D(BoxLayout):
             Color(rgb=(1, 1, 1))
             Rectangle(pos=self.pos, size=self.size)
 
-    def scatter(self, points, color=(0, 0, 1, 1), radius=5, label=None, tooltip_text=''):
-        self.graph.add_points(points, color=color,
-                              radius=radius, tooltip_text=tooltip_text)
+    def scatter(self, points, color=(0, 0, 1, 1), radius=5, label=None, tooltip_text='', row=0, col=0):
+        self.get_graph(row, col).add_points(points, color=color,
+                                            radius=radius, tooltip_text=tooltip_text)
         if label is not None:
             self.labels.append(DotLegendItem(
                 label=label, color=color, radius=radius))
         self.update_legend()
 
-    def plot(self, points, color=(0, 0, 1, 1), width=2, label=None, filled=False, opacity=0.5, tooltip_text=''):
+    def plot(self, points, color=(0, 0, 1, 1), width=2, label=None, filled=False, opacity=0.5, tooltip_text='', row=0, col=0):
         if filled:
-            self.graph.add_polygon([(points[0][0], 0)]+points+[(points[-1][0], 0)], color=(*color[: 3], opacity),
-                                   tooltip_text=tooltip_text)
-        self.graph.add_breakline(points, color=color,
-                                 width=width, tooltip_text=tooltip_text)
+            self.get_graph(row, col).add_polygon([(points[0][0], 0)]+points+[(points[-1][0], 0)], color=(*color[: 3], opacity),
+                                                 tooltip_text=tooltip_text)
+        self.get_graph(row, col).add_breakline(points, color=color,
+                                               width=width, tooltip_text=tooltip_text)
         if label is not None:
             self.labels.append(CurveLegendItem(
                 label=label, color=color, line_width=width))
         self.update_legend()
-        self.graph.update_data()
+        self.get_graph(row, col).update_data()
 
-    def violin(self, names, data, color=(0, 0.6, 0.8, 1), show_mean=True, show_median=True, bandwidth=None, cut=1):
-        data = np.array(data)
-        mx = float(data.max())
-        mn = float(data.min())
+    def violin(self, data, color=(0, 0.6, 0.8, 1), show_mean=True, show_median=True, bandwidth=None, cut=1, splitted=True, row=0, col=0):
+        mx = float(data.max().max())
+        mn = float(data.min().min())
 
         margin = 0
+        if splitted:
+            self.rows = len(data.columns)
+            self.cols = 1
 
-        for i, d in enumerate(data):
-            y = len(data)-i
+        for i, c in enumerate(data):
+            d = data[c]
+            if splitted:
+                y = 1
+                row = i
+                col = 0
+            else:
+                y = len(data.columns)-i
+
             d_mn, d_mx = float(d.min()), float(d.max())
 
             kde = gaussian_kde(d, bandwidth)
@@ -963,104 +981,125 @@ class Plot2D(BoxLayout):
                                               for x, ds in zip(X, density)]+[(X[-1], y)])
             points_down = np.array([(X[0], y)]+[[float(x), y-ds]
                                                 for x, ds in zip(X, density)]+[(X[-1], y)])
-
             # Add violin graphics
-            self.graph.add_breakline(points_up, color=(0, 0, 0, 1), width=2)
-            self.graph.add_polygon(points_up,
-                                   color=color)
+            self.get_graph(row, col).add_breakline(
+                points_up, color=(0, 0, 0, 1), width=2)
+            self.get_graph(row, col).add_polygon(points_up,
+                                                 color=color)
 
-            self.graph.add_breakline(points_down, color=(0, 0, 0, 1), width=2)
-            self.graph.add_polygon(points_down,
-                                   color=color)
+            self.get_graph(row, col).add_breakline(
+                points_down, color=(0, 0, 0, 1), width=2)
+            self.get_graph(row, col).add_polygon(points_down,
+                                                 color=color)
 
             # Add quartiles range
             q = np.quantile(d, [0.25, 0.75])
-            self.graph.add_breakline(
+            self.get_graph(row, col).add_breakline(
                 points=[(d_mn, y), (d_mx, y)], color=(0, 0, 0, 1), width=2)
-            self.graph.add_breakline(
+            self.get_graph(row, col).add_breakline(
                 points=[(q[0], y), (q[1], y)], color=(0, 0, 0, 1), width=5)
 
             # Add descriptive statistics
             if show_mean:
                 mean = float(d.mean())
-                self.graph.add_points(
+                self.get_graph(row, col).add_points(
                     points=[(mean, y)],
                     color=(1, 0, 0, 1))
             if show_median:
                 med = float(np.median(d))
-                self.graph.add_points(
+                self.get_graph(row, col).add_points(
                     points=[(med, y)],
                     color=(0, 1, 0, 1))
 
-        # Setup the graph properties
-        self.graph.xmin = mn-0.1*(mx-mn)-margin
-        self.graph.xmax = mx+0.1*(mx-mn)+margin
-        self.graph.ymin = 0
-        self.graph.ymax = len(data)+1
-        self.graph.stepx = 10**(int(np.log10(mx))-1)*len(data)
-        self.graph.stepy = 1
-        self.graph.y_axis_mapping = lambda y: names[int(y)-1]
+            # Setup the graph properties
+            if splitted:
+                self.get_graph(row, col).axis_style = ('box', 'box')
+                self.get_graph(row, col).xmin = mn-0.1*(mx-mn)-margin
+                self.get_graph(row, col).xmax = mx+0.1*(mx-mn)+margin
+                self.get_graph(row, col).ymin = 0
+                self.get_graph(row, col).ymax = 2
+                self.get_graph(
+                    row, 0).stepx = 10**(int(np.log10(mx))-1)*len(data.columns)
+                self.get_graph(row, col).stepy = 1
+                self.get_graph(
+                    row, 0).y_axis_mapping = lambda y, r=row: data.columns[r]
+                self.get_graph(row, col).update_data()
+                
+        if not splitted:
+            self.get_graph(row, col).axis_style = ('box', 'box')
+            self.get_graph(row, col).xmin = mn-0.1*(mx-mn)-margin
+            self.get_graph(row, col).xmax = mx+0.1*(mx-mn)+margin
+            self.get_graph(row, col).ymin = 0
+            self.get_graph(row, col).ymax = len(data.columns)+1 if not splitted else 1
+            self.get_graph(
+                row, 0).stepx = 10**(int(np.log10(mx))-1)*len(data.columns)
+            self.get_graph(row, col).stepy = 1
+            self.get_graph(
+                row, 0).y_axis_mapping = lambda y: data.columns[int(y)-1]
+            self.get_graph(row, col).update_data()
         self.update_legend()
-        self.graph.update_data()
 
-    def bars(self, points, color=(0, 0, 1, 1), width=1, label=None, tooltip_text=''):
-        self.graph.add_bars(points, color=color,
-                            width=width, tooltip_text=tooltip_text)
+    def bars(self, points, color=(0, 0, 1, 1), width=1, label=None, tooltip_text='', row=0, col=0):
+        self.get_graph(row, col).add_bars(points, color=color,
+                                          width=width, tooltip_text=tooltip_text)
         if label is not None:
             self.labels.append(BarLegendItem(
                 label=label, color=color))
         self.update_legend()
-        self.graph.update_data()
+        self.get_graph(row, col).update_data()
 
-    def box(self, names, data, show_mean=True, show_median=True):
-        data = np.array(data)
-        mx = float(data.max())
-        mn = float(data.min())
+    def box(self, data, show_mean=True, show_median=True, row=0, col=0):
+        mx = float(data.max().max())
+        mn = float(data.min().min())
 
-        self.graph.xmin = mn-0.1*(mx-mn)
-        self.graph.xmax = mx+0.1*(mx-mn)
-        self.graph.ymin = 0
-        self.graph.ymax = len(data)+1
-        self.graph.stepx = 10**(int(np.log10(mx))-1)*len(data)
-        self.graph.stepy = 1
-        # self.graph.y_axis_mapping = lambda y: names[int(y)]
+        self.get_graph(row, col).xmin = mn-0.1*(mx-mn)
+        self.get_graph(row, col).xmax = mx+0.1*(mx-mn)
+        self.get_graph(row, col).ymin = 0
+        self.get_graph(row, col).ymax = len(data.columns)+1
+        self.get_graph(
+            row, col).stepx = 10**(int(np.log10(mx))-1)*len(data.columns)
+        self.get_graph(row, col).stepy = 1
+        # self.get_graph(row, col).y_axis_mapping = lambda y: names[int(y)]
 
-        for i, d in enumerate(data):
-            y = len(data)-i
-            self.graph.add_hrange(
+        for i, col in enumerate(data):
+            d = data[col]
+            y = len(data.columns)-i
+            self.get_graph(row, col).add_hrange(
                 y=y, start=float(d.min()), end=float(d.max()))
 
             box_height = 0.75
             q = np.quantile(d, [0.25, 0.75])
-            self.graph.add_box(
+            self.get_graph(row, col).add_box(
                 pos=(q[0], y-box_height/2), size=(q[1]-q[0], box_height))
             if show_mean:
                 mean = float(d.mean())
-                self.graph.add_breakline(
+                self.get_graph(row, col).add_breakline(
                     points=[(mean, y-box_height/2), (mean, y+box_height/2)],
                     color=(1, 0, 0, 1))
             if show_median:
                 med = float(np.median(d))
-                self.graph.add_breakline(
+                self.get_graph(row, col).add_breakline(
                     points=[(med, y-box_height/2), (med, y+box_height/2)],
                     color=(0, 1, 0, 1))
         self.update_legend()
-        self.graph.update_data()
+        self.get_graph(row, col).update_data()
 
-    def heatmap(self, matrix, x_labels=None, y_labels=None, cmap='viridis'):
+    def heatmap(self, matrix, x_labels=None, y_labels=None, cmap='viridis', row=0, col=0):
         matrix = np.array(matrix)
         mx = matrix.max()
         mn = matrix.min()
 
-        self.graph.xmin, self.graph.ymin = 0, 0
-        self.graph.ymax = matrix.shape[0] + 1
-        self.graph.xmax = matrix.shape[1] + 1
-        self.graph.stepx = 1
-        self.graph.stepy = 1
+        self.get_graph(row, col).xmin, self.get_graph(row, col).ymin = 0, 0
+        self.get_graph(row, col).ymax = matrix.shape[0] + 1
+        self.get_graph(row, col).xmax = matrix.shape[1] + 1
+        self.get_graph(row, col).stepx = 1
+        self.get_graph(row, col).stepy = 1
         if x_labels:
-            self.graph.x_axis_mapping = lambda x: x_labels[int(x)-1]
+            self.get_graph(
+                row, col).x_axis_mapping = lambda x: x_labels[int(x)-1]
         if y_labels:
-            self.graph.y_axis_mapping = lambda y: y_labels[int(y)-1]
+            self.get_graph(
+                row, col).y_axis_mapping = lambda y: y_labels[int(y)-1]
 
         cmap = cm.get_cmap(cmap)
 
@@ -1071,14 +1110,14 @@ class Plot2D(BoxLayout):
             for j in range(matrix.shape[1]):
                 x = j+0.5
                 y = matrix.shape[0]-i-0.5
-                self.graph.add_box(pos=(x, y),
-                                   size=(1, 1),
-                                   color=color(matrix[i][j]),
-                                   tooltip_text=str(matrix[i][j]))
+                self.get_graph(row, col).add_box(pos=(x, y),
+                                                 size=(1, 1),
+                                                 color=color(matrix[i][j]),
+                                                 tooltip_text=str(matrix[i][j]))
         self.update_legend()
-        self.graph.update_data()
+        self.get_graph(row, col).update_data()
 
-    def hist(self, labels):
+    def hist(self, labels, row=0, col=0):
         h = defaultdict(int)
         for label in labels:
             h[label] += 1
@@ -1089,17 +1128,19 @@ class Plot2D(BoxLayout):
         HSV = {l: (i/len(h), 0.5, 0.9) for i, l in enumerate(h)}
         colors = {k: (*colorsys.hsv_to_rgb(*v), 1) for k, v in HSV.items()}
 
-        self.graph.xmin = 0
-        self.graph.xmax = len(h)+1
-        self.graph.ymin = 0
-        self.graph.ymax = my
-        self.graph.stepx = 1
-        self.graph.stepy = 10**(int(np.log10(my))-1)*len(h)
-        self.graph.x_axis_mapping = lambda x: X[int(x)-1]
+        self.get_graph(row, col).xmin = 0
+        self.get_graph(row, col).xmax = len(h)+1
+        self.get_graph(row, col).ymin = 0
+        self.get_graph(row, col).ymax = my
+        self.get_graph(row, col).stepx = 1
+        self.get_graph(row, col).stepy = 10**(int(np.log10(my))-1)*len(h)
+        self.get_graph(row, col).x_axis_mapping = lambda x: X[int(x)-1]
 
         for x, y in h.items():
             self.bars([(labels_to_index[x], y)],
                       color=colors[x], width=0.9, label=str(x))
 
     def clear(self):
-        self.graph.clear()
+        for j in range(self.cols):
+            for i in range(self.rows):
+                self.get_graph(i, j).clear()
